@@ -16,7 +16,6 @@ permissions:
 
 env:
   DOTNET_VERSION: "10.0.x"
-  SOLUTION_FILE: "YourSolution.sln" # <-- replace with the actual name of your solution file
 
 jobs:
   analyze:
@@ -47,14 +46,14 @@ jobs:
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
       - name: Restore dependencies
-        run: dotnet restore ${{ env.SOLUTION_FILE }}
+        run: dotnet restore
 
       # --- dotnet format ---
       - name: Run dotnet format
         run: |
           mkdir -p reports
-          echo "Running dotnet format on ${{ env.SOLUTION_FILE }}"
-          dotnet format ${{ env.SOLUTION_FILE }} \
+          echo "Running dotnet format on the solution at repository root..."
+          dotnet format \
             --verify-no-changes \
             --severity warn \
             --verbosity minimal \
@@ -67,7 +66,7 @@ jobs:
         run: |
           mkdir -p reports
           echo "Running Roslynator analysis..."
-          roslynator analyze ${{ env.SOLUTION_FILE }} \
+          roslynator analyze . \
             --format sarif \
             --output reports/roslynator.sarif \
             --severity-level warning
