@@ -44,13 +44,18 @@ jobs:
       - name: Restore (HEAD)
         run: dotnet restore
 
-      - name: Run tests with coverage (HEAD, XPlat Cobertura)
+      # === Viktig: ekskluder generert kode fra coverage ===
+      - name: Run tests with coverage (HEAD, XPlat Cobertura, exclude generated)
         run: |
           dotnet test \
             --collect:"XPlat Code Coverage" \
             --results-directory ./TestResults \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+            -- \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/obj/**;**/*.g.cs;**/*.generated.cs;**/Microsoft.AspNetCore.OpenApi.SourceGenerators/**" \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*]Microsoft.AspNetCore.OpenApi.Generated.*"
 
+      # Debug: skriv ut hele Cobertura-XML
       - name: Show contents of Cobertura coverage file
         run: |
           echo "=== List all Cobertura files ==="
@@ -92,7 +97,7 @@ jobs:
         with:
           path: code-coverage-results.md
 
-      # ---------- Diff coverage ----------
+      # ---------- Diff coverage på endrede linjer ----------
       - name: Enforce diff coverage (PR only)
         if: github.event_name == 'pull_request'
         env:
@@ -101,6 +106,7 @@ jobs:
           set -euo pipefail
           git fetch origin "$BASE_BRANCH"
 
+          # Hopp over hvis ingen produksjons-.cs endret
           changed_cs=$(git diff --name-only "origin/$BASE_BRANCH"...HEAD | grep -E '\.cs$' | grep -viE 'test|tests' || true)
           if [ -z "$changed_cs" ]; then
             echo "Ingen produksjonskode endret i denne PR-en — hopper over diff-cover."
@@ -135,18 +141,18 @@ jobs:
       # ---------- Total coverage: minstekrav + regresjon ----------
       - name: Enforce minimum total coverage (HEAD ≥ ${{ env.MIN_TOTAL_COVERAGE }}%)
         run: |
-              python - <<'PY'
-              import json, os, sys
-              with open('coveragereport/Summary.json') as f:
-                  head = json.load(f)
-              head_cov = float(head.get('linecoverage', 0.0))
-              min_required = float(os.environ.get('MIN_TOTAL_COVERAGE', '80'))
-              print(f"Head line coverage: {head_cov:.2f}% (min {min_required:.2f}%)")
-              if head_cov + 1e-9 < min_required:
-                  print(f"ERROR: Total dekning under terskelen ({head_cov:.2f}% < {min_required:.2f}%).")
-                  sys.exit(1)
-              print("OK: Total dekning er over terskel.")
-              PY
+          python - <<'PY'
+          import json, os, sys
+          with open('coveragereport/Summary.json') as f:
+              head = json.load(f)
+          head_cov = float(head.get('linecoverage', 0.0))
+          min_required = float(os.environ.get('MIN_TOTAL_COVERAGE', '80'))
+          print(f"Head line coverage: {head_cov:.2f}% (min {min_required:.2f}%)")
+          if head_cov + 1e-9 < min_required:
+              print(f"ERROR: Total dekning under terskelen ({head_cov:.2f}% < {min_required:.2f}%).")
+              sys.exit(1)
+          print("OK: Total dekning er over terskel.")
+          PY
 
       - name: Checkout base into ./base (PR only)
         if: github.event_name == 'pull_request'
@@ -168,7 +174,10 @@ jobs:
           dotnet test \
             --collect:"XPlat Code Coverage" \
             --results-directory ./TestResults \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+            -- \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/obj/**;**/*.g.cs;**/*.generated.cs;**/Microsoft.AspNetCore.OpenApi.SourceGenerators/**" \
+            DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*]Microsoft.AspNetCore.OpenApi.Generated.*"
 
       - name: Report (BASE) - JsonSummary
         if: github.event_name == 'pull_request'
@@ -191,7 +200,7 @@ jobs:
           base_cov = float(base.get('linecoverage', 0.0))
           print(f"Base line coverage: {base_cov:.2f}%")
           print(f"Head line coverage: {head_cov:.2f}%")
-          tolerance = 0.1
+          tolerance = 0.1  # for avrunding
           if head_cov + tolerance < base_cov:
               print(f"ERROR: Total dekning gikk ned: {base_cov:.2f}% -> {head_cov:.2f}%")
               sys.exit(1)
