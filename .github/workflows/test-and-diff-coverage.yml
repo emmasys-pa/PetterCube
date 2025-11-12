@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write  # for å poste PR-kommentar
+  pull-requests: write 
 
 jobs:
   test:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # nødvendig for diff mot base-branch
+          fetch-depth: 0 
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -40,7 +40,6 @@ jobs:
 
       - name: Run tests with coverage (Cobertura)
         run: |
-          # Kjør alle testprosjekter og skriv Cobertura-xml per prosjekt.
           dotnet test \
             /p:CollectCoverage=true \
             /p:CoverletOutputFormat=cobertura \
@@ -63,7 +62,6 @@ jobs:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
           git fetch origin "$BASE_BRANCH"
-          # Fail hvis < 80 % dekning på endrede linjer i PR
           diff-cover **/TestResults/*.xml \
             --compare-branch "origin/$BASE_BRANCH" \
             --fail-under 80 \
