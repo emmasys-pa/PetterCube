@@ -6,7 +6,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write 
+  pull-requests: write
 
 jobs:
   test:
@@ -15,12 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          fetch-depth: 0
 
-      - name: Setup .NET 10
+      - name: Setup .NET 10 (preview)
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+          include-prerelease: true
 
       - name: Setup Python (for diff-cover)
         uses: actions/setup-python@v5
@@ -38,35 +39,54 @@ jobs:
       - name: Restore
         run: dotnet restore
 
-      - name: Run tests with coverage (Cobertura)
+      - name: Run tests with coverage (XPlat Cobertura)
         run: |
           dotnet test \
-            /p:CollectCoverage=true \
-            /p:CoverletOutputFormat=cobertura \
-            /p:CoverletOutput=./TestResults/coverage.xml
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
-      - name: Install tools
+      - name: Install reporting tools
         run: |
-          pip install diff-cover
+          pip install --upgrade diff-cover
           dotnet tool update -g dotnet-reportgenerator-globaltool
 
-      - name: Generate nice HTML summary (optional)
+      - name: List coverage files (debug)
+        run: |
+          echo "Searching for Cobertura files..."
+          find . -path "*/TestResults/*/coverage.cobertura.xml" -print || true
+
+      - name: Generate nice HTML summary
         run: |
           reportgenerator \
-            -reports:**/TestResults/*.xml \
+            -reports:"**/TestResults/**/coverage.cobertura.xml" \
             -targetdir:coveragereport \
             -reporttypes:HtmlSummary
 
-      - name: Enforce diff coverage (ny kode måles mot base-branch)
+      - name: Enforce diff coverage
         env:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
+          set -euo pipefail
           git fetch origin "$BASE_BRANCH"
-          diff-cover **/TestResults/*.xml \
+
+          mapfile -t covfiles < <(python - <<'PY'
+          import glob 
+          for f in glob.glob("**/TestResults/**/coverage.cobertura.xml", recursive=True):
+            print(f)
+          PY
+          )
+          if [ ${#covfiles[@]} -eq 0 ]; then
+            echo "ERROR: No coverage files (**/TestResults/**/coverage.cobertura.xml)."
+            exit 1
+          fi
+
+          printf "Using coverage files:\n%s\n" "${covfiles[@]}"
+          diff-cover "${covfiles[@]}" \
             --compare-branch "origin/$BASE_BRANCH" \
             --fail-under 80 \
-            --markdown-report diff_coverage.md \
-            --html-report diff_coverage.html
+            --format html:diff_coverage.html \
+            --format markdown:diff_coverage.md
 
       - name: Comment coverage on PR
         if: github.event_name == 'pull_request'
@@ -81,4 +101,4 @@ jobs:
           path: |
             coveragereport/
             diff_coverage.html
-            **/TestResults/*.xml
+            **/TestResults/**/coverage.cobertura.xml
