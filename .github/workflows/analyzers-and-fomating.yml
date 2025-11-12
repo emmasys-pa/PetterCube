@@ -1,0 +1,83 @@
+name: PR-analyse (.NET 10 - Roslynator + dotnet format)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.cs"
+      - "**/*.csproj"
+      - "**/*.sln"
+      - ".editorconfig"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Sjekk ut kildekode
+        uses: actions/checkout@v4
+
+      - name: Sett opp .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      # Installer nødvendige CLI-verktøy
+      - name: Installer dotnet-format og Roslynator CLI
+        run: |
+          dotnet tool update -g dotnet-format
+          dotnet tool update -g roslynator.dotnet.cli
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Gjenopprett avhengigheter
+        run: dotnet restore
+
+      # dotnet format: sjekker kodeformat og analyzere (inkl. Roslynator via NuGet)
+      - name: Kjør dotnet format
+        run: |
+          mkdir -p reports
+          SOLN=$(ls -1 **/*.sln | head -n 1)
+          echo "Analyserer løsning: $SOLN"
+          dotnet format "$SOLN" \
+            --verify-no-changes \
+            --severity warn \
+            --report reports/dotnet-format.sarif \
+            --report-format sarif
+
+      # Roslynator CLI: ekstra analyse og SARIF-rapport
+      - name: Kjør Roslynator analyze
+        run: |
+          SOLN=$(ls -1 **/*.sln | head -n 1)
+          roslynator analyze "$SOLN" \
+            --format sarif \
+            --output reports/roslynator.sarif \
+            --severity-level warning
+
+      - name: Last opp SARIF-rapporter til Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports
+
+      - name: Last opp artifacts (rapporter)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analyserapporter
+          path: reports/*.sarif
