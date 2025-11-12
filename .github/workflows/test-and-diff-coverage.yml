@@ -10,6 +10,9 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  MIN_TOTAL_COVERAGE: "80" # fast minstekrav i prosent (line coverage)
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -41,7 +44,7 @@ jobs:
       - name: Restore (HEAD)
         run: dotnet restore
 
-      - name: Run tests with coverage (XPlat Cobertura)
+      - name: Run tests with coverage (HEAD, XPlat Cobertura)
         run: |
           dotnet test \
             --collect:"XPlat Code Coverage" \
@@ -58,23 +61,24 @@ jobs:
           echo "Searching for Cobertura files..."
           find . -path "*/TestResults/*/coverage.cobertura.xml" -print || true
 
-      - name: Generate HTML + JSON reports
+      - name: Report (HEAD) - HtmlSummary + JsonSummary
         run: |
           reportgenerator \
             -reports:"**/TestResults/**/coverage.cobertura.xml" \
             -targetdir:coveragereport \
-            -reporttypes:HtmlSummary;JsonSummary
+            -reporttypes:'HtmlSummary;JsonSummary' \
+            -verbosity:Warning
 
-      # ---------- PR code coverage summary ----------
+      # ---------- PR code coverage summary (nice table + badge) ----------
       - name: Code Coverage Summary
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
-          filename: coveragereport/Summary.xml
+          filename: "**/TestResults/**/coverage.cobertura.xml"  # peker rett på Cobertura-xml
           badge: true
           format: markdown
           hide_branch_rate: false
           hide_complexity: true
-          output: both
+          output: both  # både job summary + skriver code-coverage-results.md
 
       - name: Add coverage PR comment
         if: github.event_name == 'pull_request'
@@ -82,8 +86,8 @@ jobs:
         with:
           path: code-coverage-results.md
 
-      # ---------- Diff coverage ----------
-      - name: Enforce diff coverage
+      # ---------- Diff coverage på endrede linjer ----------
+      - name: Enforce diff coverage (PR only)
         if: github.event_name == 'pull_request'
         env:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
@@ -91,12 +95,14 @@ jobs:
           set -euo pipefail
           git fetch origin "$BASE_BRANCH"
 
+          # Hopp over hvis ingen produksjons-.cs endret
           changed_cs=$(git diff --name-only "origin/$BASE_BRANCH"...HEAD | grep -E '\.cs$' | grep -viE 'test|tests' || true)
           if [ -z "$changed_cs" ]; then
             echo "Ingen produksjonskode endret i denne PR-en — hopper over diff-cover."
             exit 0
           fi
 
+          # Samle Cobertura-filer
           mapfile -t covfiles < <(python - <<'PY'
           import glob
           for f in glob.glob("**/TestResults/**/coverage.cobertura.xml", recursive=True):
@@ -110,6 +116,7 @@ jobs:
 
           printf "Using coverage files:\n%s\n" "${covfiles[@]}"
 
+          # Nye format-flagg (erstatter --html-report/--markdown-report)
           diff-cover "${covfiles[@]}" \
             --compare-branch "origin/$BASE_BRANCH" \
             --fail-under 80 \
@@ -122,7 +129,22 @@ jobs:
         with:
           path: diff_coverage.md
 
-      # ---------- Total coverage regression check ----------
+      # ---------- Total coverage: minstekrav + regresjon (HEAD vs BASE) ----------
+      - name: Enforce minimum total coverage (HEAD ≥ ${{ env.MIN_TOTAL_COVERAGE }}%)
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          with open('coveragereport/Summary.json') as f:
+              head = json.load(f)
+          head_cov = float(head.get('linecoverage', 0.0))
+          min_required = float(os.environ.get('MIN_TOTAL_COVERAGE', '80'))
+          print(f"Head line coverage: {head_cov:.2f}% (min {min_required:.2f}%)")
+          if head_cov + 1e-9 < min_required:
+              print(f"ERROR: Total dekning under terskelen ({head_cov:.2f}% < {min_required:.2f}%).")
+              sys.exit(1)
+          print("OK: Total dekning er over terskel.")
+          PY
+
       - name: Checkout base into ./base (PR only)
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
@@ -152,27 +174,25 @@ jobs:
           reportgenerator \
             -reports:"**/TestResults/**/coverage.cobertura.xml" \
             -targetdir:base_coveragereport \
-            -reporttypes:JsonSummary
+            -reporttypes:'JsonSummary' \
+            -verbosity:Warning
 
       - name: Fail if total coverage regresses (HEAD < BASE)
         if: github.event_name == 'pull_request'
         run: |
           python - <<'PY'
-            import json, sys
-            head = json.load(open('coveragereport/Summary.json', 'r'))
-            base = json.load(open('base/base_coveragereport/Summary.json', 'r'))
-
-            head_cov = float(head.get('linecoverage', 0.0))
-            base_cov = float(base.get('linecoverage', 0.0))
-            print(f"Base line coverage: {base_cov:.2f}%")
-            print(f"Head line coverage: {head_cov:.2f}%")
-
-            tolerance = 0.1
-            if head_cov + tolerance < base_cov:
-            print(f"ERROR: Total dekning gikk ned: {base_cov:.2f}% -> {head_cov:.2f}%")
-            sys.exit(1)
-          else:
-              print("OK: Ingen total dekning-regresjon.")
+          import json, sys
+          head = json.load(open('coveragereport/Summary.json', 'r'))
+          base = json.load(open('base/base_coveragereport/Summary.json', 'r'))
+          head_cov = float(head.get('linecoverage', 0.0))
+          base_cov = float(base.get('linecoverage', 0.0))
+          print(f"Base line coverage: {base_cov:.2f}%")
+          print(f"Head line coverage: {head_cov:.2f}%")
+          tolerance = 0.1  # for avrunding
+          if head_cov + tolerance < base_cov:
+              print(f"ERROR: Total dekning gikk ned: {base_cov:.2f}% -> {head_cov:.2f}%")
+              sys.exit(1)
+          print("OK: Ingen total dekning-regresjon.")
           PY
 
       - name: Upload coverage artifacts
