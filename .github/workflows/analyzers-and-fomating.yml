@@ -1,4 +1,4 @@
-name: PR-analyse (.NET 10 - Roslynator + dotnet format)
+name: PR Analysis (.NET 10 - Roslynator + dotnet format)
 
 on:
   pull_request:
@@ -16,6 +16,7 @@ permissions:
 
 env:
   DOTNET_VERSION: "10.0.x"
+  SOLUTION_FILE: "YourSolution.sln" # <-- replace with the actual name of your solution file
 
 jobs:
   analyze:
@@ -23,15 +24,15 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Sjekk ut kildekode
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Sett opp .NET 10 SDK
+      - name: Set up .NET 10 SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Cache NuGet
+      - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -39,45 +40,46 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      # Installer nødvendige CLI-verktøy
-      - name: Installer dotnet-format og Roslynator CLI
+      - name: Install tools (dotnet-format and Roslynator CLI)
         run: |
-          dotnet tool update -g dotnet-format
-          dotnet tool update -g roslynator.dotnet.cli
+          dotnet tool install -g dotnet-format
+          dotnet tool install -g roslynator.dotnet.cli
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      - name: Gjenopprett avhengigheter
-        run: dotnet restore
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
 
-      # dotnet format: sjekker kodeformat og analyzere (inkl. Roslynator via NuGet)
-      - name: Kjør dotnet format
+      # --- dotnet format ---
+      - name: Run dotnet format
         run: |
           mkdir -p reports
-          SOLN=$(ls -1 **/*.sln | head -n 1)
-          echo "Analyserer løsning: $SOLN"
-          dotnet format "$SOLN" \
+          echo "Running dotnet format on ${{ env.SOLUTION_FILE }}"
+          dotnet format ${{ env.SOLUTION_FILE }} \
             --verify-no-changes \
             --severity warn \
-            --report reports/dotnet-format.sarif \
-            --report-format sarif
+            --verbosity minimal \
+            --report reports/dotnet-format.json || (
+              echo "::error::Formatting issues detected. Please run 'dotnet format' locally and commit the changes."; exit 1
+            )
 
-      # Roslynator CLI: ekstra analyse og SARIF-rapport
-      - name: Kjør Roslynator analyze
+      # --- Roslynator ---
+      - name: Run Roslynator analyze
         run: |
-          SOLN=$(ls -1 **/*.sln | head -n 1)
-          roslynator analyze "$SOLN" \
+          mkdir -p reports
+          echo "Running Roslynator analysis..."
+          roslynator analyze ${{ env.SOLUTION_FILE }} \
             --format sarif \
             --output reports/roslynator.sarif \
             --severity-level warning
 
-      - name: Last opp SARIF-rapporter til Code Scanning
+      - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: reports
+          sarif_file: reports/roslynator.sarif
 
-      - name: Last opp artifacts (rapporter)
+      - name: Upload analysis reports as artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: analyserapporter
-          path: reports/*.sarif
+          name: analysis-reports
+          path: reports/*
