@@ -72,12 +72,12 @@ jobs:
           pip install --upgrade diff-cover
           dotnet tool update -g dotnet-reportgenerator-globaltool
 
-      - name: Report (HEAD) - HtmlSummary + JsonSummary
+      - name: Report (HEAD) - HtmlSummary
         run: |
           reportgenerator \
             -reports:"**/TestResults/**/coverage.cobertura.xml" \
             -targetdir:coveragereport \
-            -reporttypes:'HtmlSummary;JsonSummary' \
+            -reporttypes:'HtmlSummary' \
             -verbosity:Warning
 
       # ---------- PR code coverage summary (nice table + badge) ----------
@@ -138,22 +138,34 @@ jobs:
         with:
           path: diff_coverage.md
 
-      # ---------- Total coverage: minstekrav + regresjon ----------
+      # ---------- Total coverage: minstekrav fra Cobertura (HEAD) ----------
       - name: Enforce minimum total coverage (HEAD ≥ ${{ env.MIN_TOTAL_COVERAGE }}%)
         run: |
           python - <<'PY'
-          import json, os, sys
-          with open('coveragereport/Summary.json') as f:
-              head = json.load(f)
-          head_cov = float(head.get('linecoverage', 0.0))
-          min_required = float(os.environ.get('MIN_TOTAL_COVERAGE', '80'))
-          print(f"Head line coverage: {head_cov:.2f}% (min {min_required:.2f}%)")
-          if head_cov + 1e-9 < min_required:
-              print(f"ERROR: Total dekning under terskelen ({head_cov:.2f}% < {min_required:.2f}%).")
+          import glob, os, sys, xml.etree.ElementTree as ET
+
+          files = glob.glob("**/TestResults/**/coverage.cobertura.xml", recursive=True)
+          if not files:
+              print("ERROR: Fant ingen Cobertura-filer.")
+              sys.exit(1)
+
+          total_cov, total_valid = 0, 0
+          for f in files:
+              root = ET.parse(f).getroot()
+              total_cov += float(root.attrib.get("lines-covered", "0"))
+              total_valid += float(root.attrib.get("lines-valid", "0"))
+
+          head_pct = 100.0 * total_cov / total_valid if total_valid > 0 else 0.0
+          min_required = float(os.environ.get("MIN_TOTAL_COVERAGE", "80"))
+
+          print(f"Head line coverage: {head_pct:.2f}% (min {min_required:.2f}%)")
+          if head_pct + 1e-9 < min_required:
+              print(f"ERROR: Total dekning under terskelen ({head_pct:.2f}% < {min_required:.2f}%).")
               sys.exit(1)
           print("OK: Total dekning er over terskel.")
           PY
 
+      # ---------- BASE: kjør coverage for base-branch ----------
       - name: Checkout base into ./base (PR only)
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
@@ -167,7 +179,7 @@ jobs:
         working-directory: base
         run: dotnet restore
 
-      - name: Run tests with coverage (BASE)
+      - name: Run tests with coverage (BASE, XPlat Cobertura, exclude generated)
         if: github.event_name == 'pull_request'
         working-directory: base
         run: |
@@ -179,30 +191,37 @@ jobs:
             DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ExcludeByFile="**/obj/**;**/*.g.cs;**/*.generated.cs;**/Microsoft.AspNetCore.OpenApi.SourceGenerators/**" \
             DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*]Microsoft.AspNetCore.OpenApi.Generated.*"
 
-      - name: Report (BASE) - JsonSummary
-        if: github.event_name == 'pull_request'
-        working-directory: base
-        run: |
-          reportgenerator \
-            -reports:"**/TestResults/**/coverage.cobertura.xml" \
-            -targetdir:base_coveragereport \
-            -reporttypes:'JsonSummary' \
-            -verbosity:Warning
-
+      # ---------- Total coverage: regresjon fra Cobertura (HEAD vs BASE) ----------
       - name: Fail if total coverage regresses (HEAD < BASE)
         if: github.event_name == 'pull_request'
         run: |
           python - <<'PY'
-          import json, sys
-          head = json.load(open('coveragereport/Summary.json', 'r'))
-          base = json.load(open('base/base_coveragereport/Summary.json', 'r'))
-          head_cov = float(head.get('linecoverage', 0.0))
-          base_cov = float(base.get('linecoverage', 0.0))
-          print(f"Base line coverage: {base_cov:.2f}%")
-          print(f"Head line coverage: {head_cov:.2f}%")
-          tolerance = 0.1  # for avrunding
-          if head_cov + tolerance < base_cov:
-              print(f"ERROR: Total dekning gikk ned: {base_cov:.2f}% -> {head_cov:.2f}%")
+          import glob, sys, xml.etree.ElementTree as ET
+
+          def pct_from_cobertura(pattern):
+              files = glob.glob(pattern, recursive=True)
+              if not files:
+                  print(f"ERROR: Ingen filer for mønster: {pattern}")
+                  return None
+              total_cov, total_valid = 0, 0
+              for f in files:
+                  root = ET.parse(f).getroot()
+                  total_cov += float(root.attrib.get("lines-covered", "0"))
+                  total_valid += float(root.attrib.get("lines-valid", "0"))
+              return (100.0 * total_cov / total_valid) if total_valid > 0 else 0.0
+
+          head = pct_from_cobertura("**/TestResults/**/coverage.cobertura.xml")
+          base = pct_from_cobertura("base/**/TestResults/**/coverage.cobertura.xml")
+
+          if head is None or base is None:
+              sys.exit(1)
+
+          print(f"Base line coverage: {base:.2f}%")
+          print(f"Head line coverage: {head:.2f}%")
+
+          tolerance = 0.1
+          if head + tolerance < base:
+              print(f"ERROR: Total dekning gikk ned: {base:.2f}% -> {head:.2f}%")
               sys.exit(1)
           print("OK: Ingen total dekning-regresjon.")
           PY
@@ -216,4 +235,3 @@ jobs:
             diff_coverage.html
             code-coverage-results.md
             **/TestResults/**/coverage.cobertura.xml
-            base/base_coveragereport/Summary.json
