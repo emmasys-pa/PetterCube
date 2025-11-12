@@ -3,6 +3,8 @@ name: tests-and-diff-coverage
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -12,7 +14,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout (PR head)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -36,7 +38,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Restore
+      - name: Restore (HEAD)
         run: dotnet restore
 
       - name: Run tests with coverage (XPlat Cobertura)
@@ -56,43 +58,122 @@ jobs:
           echo "Searching for Cobertura files..."
           find . -path "*/TestResults/*/coverage.cobertura.xml" -print || true
 
-      - name: Generate nice HTML summary
+      - name: Generate HTML + JSON reports
         run: |
           reportgenerator \
             -reports:"**/TestResults/**/coverage.cobertura.xml" \
             -targetdir:coveragereport \
-            -reporttypes:HtmlSummary
+            -reporttypes:HtmlSummary;JsonSummary
 
+      # ---------- PR code coverage summary ----------
+      - name: Code Coverage Summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coveragereport/Summary.xml
+          badge: true
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: true
+          output: both
+
+      - name: Add coverage PR comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: code-coverage-results.md
+
+      # ---------- Diff coverage ----------
       - name: Enforce diff coverage
+        if: github.event_name == 'pull_request'
         env:
           BASE_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
           set -euo pipefail
           git fetch origin "$BASE_BRANCH"
 
+          changed_cs=$(git diff --name-only "origin/$BASE_BRANCH"...HEAD | grep -E '\.cs$' | grep -viE 'test|tests' || true)
+          if [ -z "$changed_cs" ]; then
+            echo "Ingen produksjonskode endret i denne PR-en — hopper over diff-cover."
+            exit 0
+          fi
+
           mapfile -t covfiles < <(python - <<'PY'
-          import glob 
+          import glob
           for f in glob.glob("**/TestResults/**/coverage.cobertura.xml", recursive=True):
-            print(f)
+              print(f)
           PY
           )
           if [ ${#covfiles[@]} -eq 0 ]; then
-            echo "ERROR: No coverage files (**/TestResults/**/coverage.cobertura.xml)."
+            echo "ERROR: Fant ingen coverage-filer (**/TestResults/**/coverage.cobertura.xml)."
             exit 1
           fi
 
           printf "Using coverage files:\n%s\n" "${covfiles[@]}"
+
           diff-cover "${covfiles[@]}" \
             --compare-branch "origin/$BASE_BRANCH" \
             --fail-under 80 \
             --format html:diff_coverage.html \
             --format markdown:diff_coverage.md
 
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
+      - name: Comment diff coverage on PR
+        if: github.event_name == 'pull_request' && hashFiles('diff_coverage.md') != ''
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: diff_coverage.md
+
+      # ---------- Total coverage regression check ----------
+      - name: Checkout base into ./base (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          path: base
+
+      - name: Restore (BASE)
+        if: github.event_name == 'pull_request'
+        working-directory: base
+        run: dotnet restore
+
+      - name: Run tests with coverage (BASE)
+        if: github.event_name == 'pull_request'
+        working-directory: base
+        run: |
+          dotnet test \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+
+      - name: Report (BASE) - JsonSummary
+        if: github.event_name == 'pull_request'
+        working-directory: base
+        run: |
+          reportgenerator \
+            -reports:"**/TestResults/**/coverage.cobertura.xml" \
+            -targetdir:base_coveragereport \
+            -reporttypes:JsonSummary
+
+      - name: Fail if total coverage regresses (HEAD < BASE)
+        if: github.event_name == 'pull_request'
+        run: |
+          python - <<'PY'
+            import json, sys
+            head = json.load(open('coveragereport/Summary.json', 'r'))
+            base = json.load(open('base/base_coveragereport/Summary.json', 'r'))
+
+            head_cov = float(head.get('linecoverage', 0.0))
+            base_cov = float(base.get('linecoverage', 0.0))
+            print(f"Base line coverage: {base_cov:.2f}%")
+            print(f"Head line coverage: {head_cov:.2f}%")
+
+            tolerance = 0.1
+            if head_cov + tolerance < base_cov:
+            print(f"ERROR: Total dekning gikk ned: {base_cov:.2f}% -> {head_cov:.2f}%")
+            sys.exit(1)
+          else:
+              print("OK: Ingen total dekning-regresjon.")
+          PY
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
@@ -101,4 +182,6 @@ jobs:
           path: |
             coveragereport/
             diff_coverage.html
+            code-coverage-results.md
             **/TestResults/**/coverage.cobertura.xml
+            base/base_coveragereport/Summary.json
