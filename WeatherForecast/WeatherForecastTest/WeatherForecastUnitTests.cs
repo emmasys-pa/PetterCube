@@ -14,8 +14,7 @@ public class WeatherForecastUnitTests
         var wf = new WeatherForecast(DateOnly.FromDateTime(DateTime.UtcNow), c, "Mild");
         wf.TemperatureF.Should().Be(expectedF);
     }
-
-
+    
     [Fact]
     public void WeatherForecast_Record_IsImmutable()
     {

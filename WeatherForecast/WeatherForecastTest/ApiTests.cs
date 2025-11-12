@@ -3,8 +3,7 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-
-namespace WeatherApi.Tests;
+namespace WeatherForecastTest;
 
 
 public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
