@@ -132,12 +132,6 @@ jobs:
             --format html:diff_coverage.html \
             --format markdown:diff_coverage.md
 
-      - name: Comment diff coverage on PR
-        if: github.event_name == 'pull_request' && hashFiles('diff_coverage.md') != ''
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          path: diff_coverage.md
-
       # ---------- Total coverage: minstekrav fra Cobertura (HEAD) ----------
       - name: Enforce minimum total coverage (HEAD ≥ ${{ env.MIN_TOTAL_COVERAGE }}%)
         run: |
