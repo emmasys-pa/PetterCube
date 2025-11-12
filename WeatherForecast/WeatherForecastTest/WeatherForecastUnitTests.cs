@@ -1,6 +1,6 @@
 using FluentAssertions;
 
-namespace WeatherApi.Tests;
+namespace WeatherForecastTest;
 
 public class WeatherForecastUnitTests
 {
@@ -12,16 +12,16 @@ public class WeatherForecastUnitTests
     public void TemperatureF_IsCalculatedFromCelsius(int c, int expectedF)
     {
         var wf = new WeatherForecast(DateOnly.FromDateTime(DateTime.UtcNow), c, "Mild");
-        wf.TemperatureF.Should().Be(expectedF);
+        _ = wf.TemperatureF.Should().Be(expectedF);
     }
-    
+
     [Fact]
     public void WeatherForecast_Record_IsImmutable()
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var wf = new WeatherForecast(today, 5, "Cool");
-        wf.Date.Should().Be(today);
-        wf.TemperatureC.Should().Be(5);
-        wf.Summary.Should().Be("Cool");
+        _ = wf.Date.Should().Be(today);
+        _ = wf.TemperatureC.Should().Be(5);
+        _ = wf.Summary.Should().Be("Cool");
     }
 }
