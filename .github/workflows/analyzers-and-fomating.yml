@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 env:
   DOTNET_VERSION: "10.0.x"
@@ -43,7 +42,7 @@ jobs:
         run: |
           dotnet tool install -g dotnet-format
           dotnet tool install -g roslynator.dotnet.cli
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Restore dependencies
         run: dotnet restore
@@ -66,15 +65,11 @@ jobs:
         run: |
           mkdir -p reports
           echo "Running Roslynator analysis..."
-              roslynator analyze WeatherForecast.sln \
-                -o reports/roslynator.sarif \
-                --severity-level warning
+          roslynator analyze WeatherForecast.sln \
+            -o reports/roslynator.xml \
+            --severity-level warning
 
-      - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: reports/roslynator.sarif
-
+      # --- Artefakter ---
       - name: Upload analysis reports as artifacts
         if: always()
         uses: actions/upload-artifact@v4
