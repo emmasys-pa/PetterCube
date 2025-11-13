@@ -59,14 +59,6 @@ jobs:
               echo "::error::Formatting issues detected. Please run 'dotnet format' locally and commit the changes."; exit 1
             )
 
-      # --- Roslynator ---
-      - name: Run Roslynator analyze
-        run: |
-          mkdir -p reports
-          echo "Running Roslynator analysis..."
-          roslynator analyze WeatherForecast.sln \
-            -o reports/roslynator.xml
-
       # --- Artefakter ---
       - name: Upload analysis reports as artifacts
         if: always()
