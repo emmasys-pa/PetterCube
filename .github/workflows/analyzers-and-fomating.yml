@@ -54,7 +54,6 @@ jobs:
           echo "Running dotnet format on the solution at repository root..."
           dotnet format \
             --verify-no-changes \
-            --severity warn \
             --verbosity minimal \
             --report reports/dotnet-format.json || (
               echo "::error::Formatting issues detected. Please run 'dotnet format' locally and commit the changes."; exit 1
@@ -66,8 +65,7 @@ jobs:
           mkdir -p reports
           echo "Running Roslynator analysis..."
           roslynator analyze WeatherForecast.sln \
-            -o reports/roslynator.xml \
-            --severity-level warning
+            -o reports/roslynator.xml
 
       # --- Artefakter ---
       - name: Upload analysis reports as artifacts
