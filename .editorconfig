@@ -1,0 +1,130 @@
+# Top-most EditorConfig file
+root = true
+
+##############################
+# Global formatting defaults #
+##############################
+
+[*]
+charset = utf-8
+end_of_line = unset
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+max_line_length = 120
+
+######################
+# C# code formatting #
+######################
+
+[*.cs]
+# Language version
+dotnet_language_version = latest
+
+# ---- General style ----
+csharp_new_line_before_open_brace = all
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_style_namespace_declarations = file_scoped:error
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+
+# ---- var preferences ----
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+
+# ---- expression-bodied members ----
+csharp_style_expression_bodied_methods = when_possible:suggestion
+csharp_style_expression_bodied_properties = when_possible:suggestion
+csharp_style_expression_bodied_operators = when_possible:suggestion
+
+# ---- pattern matching / switch expressions ----
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+
+# ---- nullability / coalescing ----
+csharp_style_prefer_null_propagation = true:suggestion
+csharp_style_prefer_conditional_expression_over_assignment = true:suggestion
+csharp_style_prefer_conditional_expression_over_return = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+
+# ---- parentheses & readability ----
+dotnet_style_parentheses_in_arithmetic_binary_operators = always_for_clarity:suggestion
+dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:suggestion
+
+# ---- braces ----
+csharp_prefer_braces = true:error
+
+##################
+# Naming rules   #
+##################
+
+# Example: private fields start with '_'
+dotnet_naming_rule.private_fields_should_have_underscore_prefix.severity = suggestion
+dotnet_naming_rule.private_fields_should_have_underscore_prefix.symbols = private_fields
+dotnet_naming_rule.private_fields_should_have_underscore_prefix.style = underscore_prefix
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_prefix.required_prefix = _
+dotnet_naming_style.underscore_prefix.capitalization = camel_case
+
+#############################
+# Analyzer rule preferences #
+#############################
+
+# Treat code style issues as warnings (not errors)
+dotnet_analyzer_diagnostic.severity = warning
+
+# Disable specific analyzers that cause dotnet format crashes
+dotnet_diagnostic.CA1050.severity = none     # Types should be declared in namespaces
+dotnet_diagnostic.CA1062.severity = none     # Validate arguments of public methods
+dotnet_diagnostic.CA1303.severity = none     # Do not pass literals as localized parameters
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1852.severity = none
+
+# Security rules
+dotnet_analyzer_diagnostic.category-Security.severity = warning
+
+# Style rules
+dotnet_analyzer_diagnostic.category-Style.severity = warning
+dotnet_analyzer_diagnostic.category-Design.severity = warning
+dotnet_analyzer_diagnostic.category-Maintainability.severity = warning
+dotnet_analyzer_diagnostic.category-Naming.severity = warning
+
+#############################
+# File-specific overrides   #
+#############################
+
+[*.json]
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.cshtml]
+indent_size = 2
+insert_final_newline = false
+# Tell dotnet-format to ignore generated code
+[*.g.cs]
+generated_code = true
+
+[*/obj/**]
+generated_code = true
+
+# Prevent dotnet-format from analyzing or modifying project files
+[*.{csproj,props,targets}]
+generated_code = true
+
+# Ignore encoding (CHARSET) diagnostics from dotnet format
+dotnet_diagnostic.CHARSET.severity = none

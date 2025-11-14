@@ -1,0 +1,68 @@
+name: PR Analysis (.NET 10 - Roslynator + dotnet format)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.cs"
+      - "**/*.csproj"
+      - "**/*.sln"
+      - ".editorconfig"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Install tools (dotnet-format and Roslynator CLI)
+        run: |
+          dotnet tool install -g dotnet-format
+          dotnet tool install -g roslynator.dotnet.cli
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      # --- dotnet format ---
+      - name: Run dotnet format
+        run: |
+          mkdir -p reports
+          echo "Running dotnet format on the solution at repository root..."
+          dotnet format \
+            --verify-no-changes \
+            --verbosity minimal \
+            --report reports/dotnet-format.json || (
+              echo "::error::Formatting issues detected. Please run 'dotnet format' locally and commit the changes."; exit 1
+            )
+
+      # --- Artefakter ---
+      - name: Upload analysis reports as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis-reports
+          path: reports/*
