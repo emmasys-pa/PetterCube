@@ -1,4 +1,4 @@
-name: PR Analysis (.NET 10 - Roslynator + dotnet format)
+name: PR Analysis With dotnet format
 
 on:
   pull_request:
@@ -37,12 +37,6 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
-
-      - name: Install tools (dotnet-format and Roslynator CLI)
-        run: |
-          dotnet tool install -g dotnet-format
-          dotnet tool install -g roslynator.dotnet.cli
-          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Restore dependencies
         run: dotnet restore
