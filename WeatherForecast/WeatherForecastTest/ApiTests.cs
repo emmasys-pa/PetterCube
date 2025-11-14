@@ -53,6 +53,28 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
     }
 
 
+    [Fact]
+    public async Task Get_NorthPoleWeatherForecast_Has_Expected_Shape_And_Ranges()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.GetAsync("/weatherforecast/northpole");
+        _ = response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = await response.Content.ReadFromJsonAsync<WeatherForecast>();
+        _ = payload.Should().NotBeNull();
+        var item = payload!;
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _ = item.Date.Should().Be(today);
+
+        _ = item.TemperatureC.Should().BeInRange(-50, -20);
+        _ = item.Summary.Should().Be("Arctic Cold");
+
+        var expectedF = 32 + (int)Math.Floor(item.TemperatureC / 0.5556);
+        _ = item.TemperatureF.Should().Be(expectedF);
+    }
+
     private record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
     {
         public int TemperatureF { get; init; }
