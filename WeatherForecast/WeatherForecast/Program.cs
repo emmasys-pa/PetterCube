@@ -34,6 +34,17 @@ app.MapGet("/weatherforecast", () =>
     })
     .WithName("GetWeatherForecast");
 
+app.MapGet("/weatherforecast/northpole", () =>
+    {
+        return new WeatherForecastModel
+        (
+            DateOnly.FromDateTime(DateTime.UtcNow),
+            Random.Shared.Next(-50, -20),
+            "Arctic Cold"
+        );
+    })
+    .WithName("GetNorthPoleWeatherForecast");
+
 app.Run();
 
 
