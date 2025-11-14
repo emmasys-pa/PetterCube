@@ -21,20 +21,17 @@ var summaries = new[]
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
 };
 
-app.MapGet("/weatherforecast", () =>
-    {
-        return Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecastModel
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
+app.MapGet("/weatherforecast", () =>{return Enumerable.Range(1  , 5).Select ( index =>new   WeatherForecastModel(DateOnly.FromDateTime(DateTime.Now.AddDays(index)),Random.Shared.Next(-20, 55),summaries[Random.Shared.Next(summaries.Length)]))
             .ToArray();
     })
-    .WithName("GetWeatherForecast");
+    .WithName("GetWeatherForecast");        
 
 app.Run();
+
+
+
+
+
 
 
 
